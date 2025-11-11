@@ -1,9 +1,21 @@
-import React from 'react';
+import { useEffect } from 'react';
 import { useCounter } from '../context/CounterContext';
 import { RotateCcw, ChevronRight, ChevronLeft, ExternalLink } from 'lucide-react';
 
 function CounterPage() {
-  const { count, increment, decrement, reset } = useCounter();
+  const { count, increment, decrement, reset, undoLastIncrement, isBusy } = useCounter();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isBusy) return;
+      if (e.key === 'ArrowRight') increment();
+      else if (e.key === 'ArrowLeft') decrement();
+      else if (e.key.toLowerCase() === 'r') reset();
+      else if (e.key.toLowerCase() === 'u') undoLastIncrement();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [increment, decrement, reset, undoLastIncrement, isBusy]);
 
   const openDisplay = () => {
     window.open('/display', '_blank');
@@ -23,7 +35,7 @@ function CounterPage() {
       <div className="flex gap-12">
         <button
           onClick={decrement}
-          disabled={count <= 0}
+          disabled={isBusy || count <= 0}
           className="flex items-center gap-4 bg-red-600 text-white px-16 py-8 rounded-2xl text-4xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
           <ChevronLeft size={48} />
@@ -31,7 +43,7 @@ function CounterPage() {
         </button>
         <button
           onClick={increment}
-          disabled={count >= 2000}
+          disabled={isBusy || count >= 2000}
           className="flex items-center gap-4 bg-red-600 text-white px-16 py-8 rounded-2xl text-4xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
           Suivant
@@ -48,13 +60,22 @@ function CounterPage() {
         </ol>
       </div>
 
-      <button
-        onClick={reset}
-        className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors mt-8"
-      >
-        Réinitialiser
-        <RotateCcw size={24} />
-      </button>
+      <div className="flex items-center gap-4 mt-8">
+        <button
+          onClick={undoLastIncrement}
+          disabled={isBusy || count <= 0}
+          className="flex items-center gap-2 bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Annuler le dernier +
+        </button>
+        <button
+          onClick={reset}
+          className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors"
+        >
+          Réinitialiser
+          <RotateCcw size={24} />
+        </button>
+      </div>
     </div>
   );
 }

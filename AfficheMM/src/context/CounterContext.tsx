@@ -18,6 +18,10 @@ interface CounterContextType {
   increment: () => void;
   decrement: () => void;
   reset: () => void;
+  undoLastIncrement: () => void;
+  isBusy: boolean;
+  errorMessage: string | null;
+  clearError: () => void;
   clearStats: () => void;
   exportStats: () => void;
   actions: Action[];
@@ -43,14 +47,14 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
   const [actions, setActions] = useState<Action[]>([]);
   const [counterId, setCounterId] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const bellSound = new Audio('/bell.mp3');
+  const incrementSound = new Audio('/son.mp3');
 
   // Initialize counter and subscriptions
   useEffect(() => {
-    let counterSubscription: any;
-    let actionsSubscription: any;
-
     const initializeCounter = async () => {
       try {
         // Get or create counter
@@ -61,6 +65,7 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
 
         if (countersError) {
           console.error('Error fetching counters:', countersError);
+          setErrorMessage('Erreur de chargement du compteur.');
           return;
         }
 
@@ -75,6 +80,7 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
           
           if (newCounterError) {
             console.error('Error creating counter:', newCounterError);
+            setErrorMessage("Erreur lors de la création du compteur.");
             return;
           }
           
@@ -97,6 +103,7 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
 
           if (actionsError) {
             console.error('Error fetching actions:', actionsError);
+            setErrorMessage("Erreur de chargement de l'historique.");
           } else if (actionsData) {
             setActions(actionsData.map(action => ({
               type: action.action_type as 'increment' | 'decrement' | 'reset',
@@ -108,15 +115,13 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error('Error in initialization:', error);
+        setErrorMessage("Une erreur est survenue à l'initialisation.");
       }
     };
 
     initializeCounter();
 
-    return () => {
-      if (counterSubscription) counterSubscription.unsubscribe();
-      if (actionsSubscription) actionsSubscription.unsubscribe();
-    };
+    return undefined;
   }, []);
 
   // Set up realtime subscriptions after counter is initialized
@@ -171,6 +176,7 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
     if (!counterId) return;
 
     try {
+      setIsBusy(true);
       // Update counter value
       const { error: updateError } = await supabase
         .from('counters')
@@ -179,6 +185,7 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
 
       if (updateError) {
         console.error('Error updating counter:', updateError);
+        setErrorMessage('Erreur lors de la mise à jour du compteur.');
         return;
       }
 
@@ -192,23 +199,33 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
 
       if (actionError) {
         console.error('Error recording action:', actionError);
+        setErrorMessage("Erreur lors de l'enregistrement de l'action.");
       }
     } catch (error) {
       console.error('Error in updateCounter:', error);
+      setErrorMessage('Erreur réseau pendant la mise à jour.');
+    } finally {
+      setIsBusy(false);
     }
   };
 
   const increment = async () => {
-    if (count >= 2000) return;
+    if (isBusy || count >= 2000) return;
     const newCount = count + 1;
     setCount(newCount);
     await updateCounter(newCount, 'increment');
-    bellSound.currentTime = 0;
-    bellSound.play().catch(err => console.log('Erreur audio:', err));
+    try {
+      incrementSound.currentTime = 0;
+      await incrementSound.play();
+    } catch (err) {
+      console.log('Erreur audio son.mp3, fallback bell:', err);
+      bellSound.currentTime = 0;
+      bellSound.play().catch(e => console.log('Erreur audio fallback:', e));
+    }
   };
 
   const decrement = async () => {
-    if (count <= 0) return;
+    if (isBusy || count <= 0) return;
     const newCount = count - 1;
     setCount(newCount);
     await updateCounter(newCount, 'decrement');
@@ -217,8 +234,77 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
   };
 
   const reset = async () => {
+    if (isBusy) return;
     setCount(0);
     await updateCounter(0, 'reset');
+  };
+
+  const undoLastIncrement = async () => {
+    if (!counterId || isBusy) return;
+    const lastIncrement = [...actions].reverse().find(a => a.type === 'increment');
+    if (!lastIncrement || count <= 0) return;
+
+    try {
+      setIsBusy(true);
+      const { data: lastActionRow, error: selectError } = await supabase
+        .from('counter_actions')
+        .select('id, created_at')
+        .eq('counter_id', counterId)
+        .eq('action_type', 'increment')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (selectError) {
+        console.error('Error selecting last increment action:', selectError);
+        setErrorMessage("Impossible de trouver la dernière action +.");
+        return;
+      }
+
+      const newCount = count - 1;
+      setCount(newCount);
+
+      const { error: updateError } = await supabase
+        .from('counters')
+        .update({ value: newCount })
+        .eq('id', counterId);
+
+      if (updateError) {
+        console.error('Error updating counter during undo:', updateError);
+        setErrorMessage('Erreur lors de la mise à jour pendant annulation.');
+        return;
+      }
+
+      if (lastActionRow?.id) {
+        const { error: deleteError } = await supabase
+          .from('counter_actions')
+          .delete()
+          .eq('id', lastActionRow.id);
+
+        if (deleteError) {
+          console.error('Error deleting last increment action:', deleteError);
+          setErrorMessage("Erreur lors de la suppression de l'action +.");
+        } else {
+          setActions(prev => {
+            let removed = false;
+            const copy = [...prev];
+            for (let i = copy.length - 1; i >= 0; i--) {
+              if (!removed && copy[i].type === 'increment') {
+                copy.splice(i, 1);
+                removed = true;
+                break;
+              }
+            }
+            return copy;
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error in undoLastIncrement:', error);
+      setErrorMessage("Erreur réseau pendant l'annulation du dernier +.");
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const clearStats = async () => {
@@ -232,11 +318,13 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error clearing stats:', error);
+        setErrorMessage("Erreur pendant l'effacement de l'historique.");
       } else {
         setActions([]);
       }
     } catch (error) {
       console.error('Error in clearStats:', error);
+      setErrorMessage('Erreur réseau pendant la suppression.');
     }
   };
 
@@ -306,12 +394,18 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+  const clearError = () => setErrorMessage(null);
+
   return (
     <CounterContext.Provider value={{ 
       count, 
       increment, 
       decrement, 
       reset, 
+      undoLastIncrement,
+      isBusy,
+      errorMessage,
+      clearError,
       clearStats, 
       exportStats,
       actions, 
