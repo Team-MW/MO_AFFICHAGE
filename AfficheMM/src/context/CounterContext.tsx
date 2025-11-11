@@ -1,0 +1,323 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+
+interface Action {
+  type: 'increment' | 'decrement' | 'reset';
+  timestamp: string;
+}
+
+interface DailyStats {
+  date: string;
+  increments: number;
+  decrements: number;
+  resets: number;
+}
+
+interface CounterContextType {
+  count: number;
+  increment: () => void;
+  decrement: () => void;
+  reset: () => void;
+  clearStats: () => void;
+  exportStats: () => void;
+  actions: Action[];
+  getStats: () => {
+    daily: DailyStats[];
+    weekly: { increments: number; decrements: number; resets: number };
+    monthly: { increments: number; decrements: number; resets: number };
+  };
+}
+
+const CounterContext = createContext<CounterContextType | undefined>(undefined);
+
+export function useCounter() {
+  const context = useContext(CounterContext);
+  if (context === undefined) {
+    throw new Error('useCounter must be used within a CounterProvider');
+  }
+  return context;
+}
+
+export function CounterProvider({ children }: { children: React.ReactNode }) {
+  const [count, setCount] = useState(0);
+  const [actions, setActions] = useState<Action[]>([]);
+  const [counterId, setCounterId] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  const bellSound = new Audio('/bell.mp3');
+
+  // Initialize counter and subscriptions
+  useEffect(() => {
+    let counterSubscription: any;
+    let actionsSubscription: any;
+
+    const initializeCounter = async () => {
+      try {
+        // Get or create counter
+        const { data: counters, error: countersError } = await supabase
+          .from('counters')
+          .select('*')
+          .limit(1);
+
+        if (countersError) {
+          console.error('Error fetching counters:', countersError);
+          return;
+        }
+
+        let counter;
+        if (!counters || counters.length === 0) {
+          // Create a new counter if none exists
+          const { data: newCounter, error: newCounterError } = await supabase
+            .from('counters')
+            .insert([{ value: 0 }])
+            .select()
+            .single();
+          
+          if (newCounterError) {
+            console.error('Error creating counter:', newCounterError);
+            return;
+          }
+          
+          counter = newCounter;
+        } else {
+          counter = counters[0];
+        }
+
+        if (counter) {
+          console.log('Counter initialized:', counter.id);
+          setCounterId(counter.id);
+          setCount(counter.value);
+
+          // Load actions
+          const { data: actionsData, error: actionsError } = await supabase
+            .from('counter_actions')
+            .select('action_type, created_at')
+            .eq('counter_id', counter.id)
+            .order('created_at', { ascending: true });
+
+          if (actionsError) {
+            console.error('Error fetching actions:', actionsError);
+          } else if (actionsData) {
+            setActions(actionsData.map(action => ({
+              type: action.action_type as 'increment' | 'decrement' | 'reset',
+              timestamp: action.created_at
+            })));
+          }
+
+          setIsInitialized(true);
+        }
+      } catch (error) {
+        console.error('Error in initialization:', error);
+      }
+    };
+
+    initializeCounter();
+
+    return () => {
+      if (counterSubscription) counterSubscription.unsubscribe();
+      if (actionsSubscription) actionsSubscription.unsubscribe();
+    };
+  }, []);
+
+  // Set up realtime subscriptions after counter is initialized
+  useEffect(() => {
+    if (!counterId || !isInitialized) return;
+
+    console.log('Setting up realtime subscriptions for counter:', counterId);
+
+    // Subscribe to counter changes
+    const counterSubscription = supabase
+      .channel(`counter-changes-${counterId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'counters',
+        filter: `id=eq.${counterId}`
+      }, (payload) => {
+        console.log('Counter updated via realtime:', payload.new.value);
+        setCount(payload.new.value);
+      })
+      .subscribe((status) => {
+        console.log('Counter subscription status:', status);
+      });
+
+    // Subscribe to action changes
+    const actionsSubscription = supabase
+      .channel(`action-changes-${counterId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'counter_actions',
+        filter: `counter_id=eq.${counterId}`
+      }, (payload) => {
+        console.log('New action via realtime:', payload.new);
+        setActions(prev => [...prev, {
+          type: payload.new.action_type as 'increment' | 'decrement' | 'reset',
+          timestamp: payload.new.created_at
+        }]);
+      })
+      .subscribe((status) => {
+        console.log('Actions subscription status:', status);
+      });
+
+    return () => {
+      console.log('Cleaning up subscriptions');
+      counterSubscription.unsubscribe();
+      actionsSubscription.unsubscribe();
+    };
+  }, [counterId, isInitialized]);
+
+  const updateCounter = async (newCount: number, actionType: 'increment' | 'decrement' | 'reset') => {
+    if (!counterId) return;
+
+    try {
+      // Update counter value
+      const { error: updateError } = await supabase
+        .from('counters')
+        .update({ value: newCount })
+        .eq('id', counterId);
+
+      if (updateError) {
+        console.error('Error updating counter:', updateError);
+        return;
+      }
+
+      // Record action - don't add to local state here, let realtime handle it
+      const { error: actionError } = await supabase
+        .from('counter_actions')
+        .insert([{
+          counter_id: counterId,
+          action_type: actionType
+        }]);
+
+      if (actionError) {
+        console.error('Error recording action:', actionError);
+      }
+    } catch (error) {
+      console.error('Error in updateCounter:', error);
+    }
+  };
+
+  const increment = async () => {
+    if (count >= 2000) return;
+    const newCount = count + 1;
+    setCount(newCount);
+    await updateCounter(newCount, 'increment');
+    bellSound.currentTime = 0;
+    bellSound.play().catch(err => console.log('Erreur audio:', err));
+  };
+
+  const decrement = async () => {
+    if (count <= 0) return;
+    const newCount = count - 1;
+    setCount(newCount);
+    await updateCounter(newCount, 'decrement');
+    bellSound.currentTime = 0;
+    bellSound.play().catch(err => console.log('Erreur audio:', err));
+  };
+
+  const reset = async () => {
+    setCount(0);
+    await updateCounter(0, 'reset');
+  };
+
+  const clearStats = async () => {
+    if (!counterId) return;
+
+    try {
+      const { error } = await supabase
+        .from('counter_actions')
+        .delete()
+        .eq('counter_id', counterId);
+
+      if (error) {
+        console.error('Error clearing stats:', error);
+      } else {
+        setActions([]);
+      }
+    } catch (error) {
+      console.error('Error in clearStats:', error);
+    }
+  };
+
+  const exportStats = () => {
+    const stats = getStats();
+    const now = new Date().toISOString().split('T')[0];
+    
+    const csvContent = [
+      'Type de statistiques,Période,Suivant,Retour,Réinitialisations',
+      `Mensuel,${now},${stats.monthly.increments},${stats.monthly.decrements},${stats.monthly.resets}`,
+      `Hebdomadaire,${now},${stats.weekly.increments},${stats.weekly.decrements},${stats.weekly.resets}`,
+      '',
+      'Date,Suivant,Retour,Réinitialisations',
+      ...stats.daily.map(day => 
+        `${day.date},${day.increments},${day.decrements},${day.resets}`
+      )
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `statistiques_${now}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const getStats = () => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const dailyStats = actions.reduce((acc: { [key: string]: DailyStats }, action) => {
+      const date = action.timestamp.split('T')[0];
+      if (!acc[date]) {
+        acc[date] = { date, increments: 0, decrements: 0, resets: 0 };
+      }
+      acc[date][`${action.type}s`]++;
+      return acc;
+    }, {});
+
+    const weekly = {
+      increments: 0,
+      decrements: 0,
+      resets: 0
+    };
+    const monthly = {
+      increments: 0,
+      decrements: 0,
+      resets: 0
+    };
+
+    actions.forEach(action => {
+      const actionDate = new Date(action.timestamp);
+      if (actionDate >= startOfWeek) {
+        weekly[`${action.type}s`]++;
+      }
+      if (actionDate >= startOfMonth) {
+        monthly[`${action.type}s`]++;
+      }
+    });
+
+    return {
+      daily: Object.values(dailyStats).sort((a, b) => b.date.localeCompare(a.date)),
+      weekly,
+      monthly
+    };
+  };
+
+  return (
+    <CounterContext.Provider value={{ 
+      count, 
+      increment, 
+      decrement, 
+      reset, 
+      clearStats, 
+      exportStats,
+      actions, 
+      getStats 
+    }}>
+      {children}
+    </CounterContext.Provider>
+  );
+}
