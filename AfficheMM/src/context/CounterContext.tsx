@@ -49,6 +49,8 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [broadcastChannel, setBroadcastChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
+  const [isBroadcastReady, setIsBroadcastReady] = useState(false);
 
   const bellSound = new Audio('/bell.mp3');
   const incrementSound = new Audio('/son.mp3');
@@ -61,6 +63,7 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
         const { data: counters, error: countersError } = await supabase
           .from('counters')
           .select('*')
+          .order('id', { ascending: true })
           .limit(1);
 
         if (countersError) {
@@ -154,12 +157,25 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
         schema: 'public',
         table: 'counter_actions',
         filter: `counter_id=eq.${counterId}`
-      }, (payload) => {
+      }, async (payload) => {
         console.log('New action via realtime:', payload.new);
         setActions(prev => [...prev, {
           type: payload.new.action_type as 'increment' | 'decrement' | 'reset',
           timestamp: payload.new.created_at
         }]);
+        // Refresh the counter value immediately on any action to keep all clients in sync
+        try {
+          const { data, error } = await supabase
+            .from('counters')
+            .select('value')
+            .eq('id', counterId!)
+            .single();
+          if (!error && typeof data?.value === 'number') {
+            setCount(data.value);
+          }
+        } catch {
+          // ignore transient errors
+        }
       })
       .subscribe((status) => {
         console.log('Actions subscription status:', status);
@@ -170,6 +186,95 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
       counterSubscription.unsubscribe();
       actionsSubscription.unsubscribe();
     };
+  }, [counterId, isInitialized]);
+
+  // Lightweight broadcast channel for instant cross-tab sync
+  useEffect(() => {
+    const channel = supabase
+      .channel('counter-broadcast')
+      .on('broadcast', { event: 'count-updated' }, (payload) => {
+        const p = payload as unknown as { payload?: { value?: number } };
+        const value = p.payload?.value;
+        console.log('[Display] Broadcast received, new value:', value);
+        if (typeof value === 'number') {
+          setCount(value);
+        }
+      })
+      .subscribe((status) => {
+        console.log('[Broadcast] subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setIsBroadcastReady(true);
+        }
+      });
+
+    setBroadcastChannel(channel);
+
+    return () => {
+      channel.unsubscribe();
+      setBroadcastChannel(null);
+    };
+  }, []);
+
+  // Cross-tab sync using localStorage for same-device tabs (instant)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'counter-value' && e.newValue) {
+        try {
+          const newValue = parseInt(e.newValue, 10);
+          if (!isNaN(newValue)) {
+            console.log('[Display] localStorage sync, new value:', newValue);
+            setCount(newValue);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Fallback polling to keep devices in sync if realtime is delayed/missed
+  useEffect(() => {
+    if (!counterId || !isInitialized) return;
+    const interval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('counters')
+          .select('value')
+          .eq('id', counterId)
+          .single();
+        if (!error && typeof data?.value === 'number') {
+          setCount(prev => (prev !== data.value ? data.value : prev));
+        }
+      } catch {
+        // ignore transient network errors
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [counterId, isInitialized]);
+
+  // Refresh when tab/window becomes visible again (handles backgrounded tabs or resumed devices)
+  useEffect(() => {
+    if (!counterId || !isInitialized) return;
+    const onVisible = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const { data, error } = await supabase
+            .from('counters')
+            .select('value')
+            .eq('id', counterId)
+            .single();
+          if (!error && typeof data?.value === 'number') {
+            setCount(data.value);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [counterId, isInitialized]);
 
   const updateCounter = async (newCount: number, actionType: 'increment' | 'decrement' | 'reset') => {
@@ -213,7 +318,19 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
     if (isBusy || count >= 2000) return;
     const newCount = count + 1;
     setCount(newCount);
+    // Sync to localStorage for same-device tabs
+    localStorage.setItem('counter-value', String(newCount));
+    console.log('[Increment] Broadcasting new value:', newCount);
     await updateCounter(newCount, 'increment');
+    // broadcast for instant sync
+    if (isBroadcastReady && broadcastChannel) {
+      try {
+        await broadcastChannel.send({ type: 'broadcast', event: 'count-updated', payload: { value: newCount } });
+        console.log('[Increment] Broadcast sent successfully');
+      } catch (err) {
+        console.log('broadcast error (increment):', err);
+      }
+    }
     try {
       incrementSound.currentTime = 0;
       await incrementSound.play();
@@ -228,7 +345,15 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
     if (isBusy || count <= 0) return;
     const newCount = count - 1;
     setCount(newCount);
+    localStorage.setItem('counter-value', String(newCount));
     await updateCounter(newCount, 'decrement');
+    if (isBroadcastReady && broadcastChannel) {
+      try {
+        await broadcastChannel.send({ type: 'broadcast', event: 'count-updated', payload: { value: newCount } });
+      } catch (err) {
+        console.log('broadcast error (decrement):', err);
+      }
+    }
     bellSound.currentTime = 0;
     bellSound.play().catch(err => console.log('Erreur audio:', err));
   };
@@ -236,7 +361,15 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
   const reset = async () => {
     if (isBusy) return;
     setCount(0);
+    localStorage.setItem('counter-value', '0');
     await updateCounter(0, 'reset');
+    if (isBroadcastReady && broadcastChannel) {
+      try {
+        await broadcastChannel.send({ type: 'broadcast', event: 'count-updated', payload: { value: 0 } });
+      } catch (err) {
+        console.log('broadcast error (reset):', err);
+      }
+    }
   };
 
   const undoLastIncrement = async () => {
