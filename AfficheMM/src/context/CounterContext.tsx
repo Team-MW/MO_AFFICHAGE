@@ -18,6 +18,7 @@ interface CounterContextType {
   increment: () => void;
   decrement: () => void;
   reset: () => void;
+  setToValue: (value: number) => void;
   undoLastIncrement: () => void;
   isBusy: boolean;
   errorMessage: string | null;
@@ -372,6 +373,23 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const setToValue = async (value: number) => {
+    if (isBusy || value < 0 || value > 2000) return;
+    const newCount = Math.floor(value);
+    setCount(newCount);
+    localStorage.setItem('counter-value', String(newCount));
+    console.log('[SetToValue] Setting counter to:', newCount);
+    await updateCounter(newCount, 'reset');
+    if (isBroadcastReady && broadcastChannel) {
+      try {
+        await broadcastChannel.send({ type: 'broadcast', event: 'count-updated', payload: { value: newCount } });
+        console.log('[SetToValue] Broadcast sent successfully');
+      } catch (err) {
+        console.log('broadcast error (setToValue):', err);
+      }
+    }
+  };
+
   const undoLastIncrement = async () => {
     if (!counterId || isBusy) return;
     const lastIncrement = [...actions].reverse().find(a => a.type === 'increment');
@@ -534,7 +552,8 @@ export function CounterProvider({ children }: { children: React.ReactNode }) {
       count, 
       increment, 
       decrement, 
-      reset, 
+      reset,
+      setToValue, 
       undoLastIncrement,
       isBusy,
       errorMessage,
