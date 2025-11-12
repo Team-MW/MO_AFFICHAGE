@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { io } from 'socket.io-client';
 
 // 🔗 Connexion au backend (adapter si ton backend est sur une autre machine)
-const socket = io('http://localhost:4000');
+const socket = io('https://mo-affichage.onrender.com');
 
 // ✅ Types pour TypeScript
 interface CounterContextType {
@@ -32,11 +32,10 @@ export const CounterProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     // Récupération initiale (si jamais le socket se connecte après)
-    fetch('http://localhost:4000/count')
-      .then((res) => res.json())
-      .then((data) => setCount(data.count))
-      .catch((err) => console.error('Erreur fetch count:', err));
-
+fetch('https://mo-affichage.onrender.com/count')
+  .then((res) => res.json())
+  .then((data) => setCount(data.count))
+  .catch((err) => console.error('Erreur fetch count:', err));
     // Nettoyage des listeners
     return () => {
       socket.off('countUpdated');
