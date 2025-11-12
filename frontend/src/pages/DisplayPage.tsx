@@ -1,47 +1,56 @@
+import { useEffect, useRef } from 'react';
 import { useCounter } from '../context/CounterContext';
 import { Timer } from 'lucide-react';
 
 function DisplayPage() {
   const { count } = useCounter();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // 🔊 Joue le son à chaque changement de numéro
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current
+        .play()
+        .catch(() => console.warn('⚠️ Lecture du son bloquée (interaction utilisateur requise)'));
+    }
+  }, [count]);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-red-50 p-4 sm:p-6 md:p-8">
+      {/* 🎵 Élément audio */}
+      <audio ref={audioRef} src="/son.mp3" preload="auto" />
+
       <div className="relative bg-white p-6 sm:p-10 md:p-16 xl:p-20 rounded-3xl shadow-2xl text-center w-full max-w-7xl mx-2 sm:mx-4 border-4 sm:border-8 border-red-800">
 
-        {/* --- Carte mobilité (gauche) --- */}
+        {/* --- Carte mobilité --- */}
         <div className="absolute left-3 sm:left-4 md:left-6 top-3 sm:top-4 md:top-6 bg-red-100 border border-red-300 text-red-800 px-3 sm:px-4 md:px-5 py-2 sm:py-3 rounded-xl font-semibold shadow-sm inline-flex flex-col items-center gap-1 sm:gap-2">
           <img
             src="/iconandicap.jpg"
             alt="Carte mobilité"
             className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
+            onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
           />
           <span className="text-xs sm:text-sm md:text-base">1 / personne</span>
         </div>
 
-        {/* --- Ticket (bas droite) --- */}
+        {/* --- Ticket --- */}
         <div className="absolute right-3 sm:right-4 md:right-6 bottom-3 sm:bottom-4 md:bottom-6 bg-white/70 rounded-xl p-2 sm:p-3 shadow-md border border-red-200">
           <img
             src="/ticket.png"
             alt="Icône ticket"
             className="h-10 sm:h-12 md:h-14 lg:h-16 w-auto"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
+            onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
           />
         </div>
 
-        {/* --- Logo principal --- */}
+        {/* --- Logo --- */}
         <div className="flex items-center justify-center gap-3 sm:gap-4 mb-6 sm:mb-8 md:mb-12">
           <img
             src="/mo.png"
             alt="Marché de Mo'"
             className="h-16 sm:h-24 md:h-32 lg:h-40 xl:h-48 w-auto drop-shadow-md"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
+            onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
           />
         </div>
 
