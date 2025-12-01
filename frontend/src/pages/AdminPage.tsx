@@ -1,16 +1,50 @@
 import React, { useState } from 'react';
-import { useCounter } from '../context/CounterContext';
 import { Trash2, Download } from 'lucide-react';
 
+// ✅ Données simulées (pour test sans backend ni context)
+const fakeStats = {
+  monthly: { increments: 150, decrements: 45, resets: 12 },
+  weekly: { increments: 37, decrements: 9, resets: 3 },
+  daily: [
+    { date: '2025-11-01', increments: 5, decrements: 1, resets: 0 },
+    { date: '2025-11-02', increments: 8, decrements: 3, resets: 1 },
+    { date: '2025-11-03', increments: 10, decrements: 2, resets: 0 },
+  ],
+};
+
 function AdminPage() {
-  const { getStats, clearStats, exportStats } = useCounter();
-  const stats = getStats();
+  const [stats, setStats] = useState(fakeStats);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  const handleClearStats = () => {
-    setShowConfirmation(true);
+  // 🔹 Exporter en CSV (fonction simple)
+  const exportStats = () => {
+    const headers = ['Date', 'Suivant', 'Retour', 'Réinitialisations'];
+    const rows = stats.daily.map((d) => [
+      d.date,
+      d.increments,
+      d.decrements,
+      d.resets,
+    ]);
+
+    const csvContent =
+      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'stats.csv';
+    link.click();
   };
 
+  // 🔹 Effacer les stats
+  const clearStats = () => {
+    setStats({
+      monthly: { increments: 0, decrements: 0, resets: 0 },
+      weekly: { increments: 0, decrements: 0, resets: 0 },
+      daily: [],
+    });
+  };
+
+  const handleClearStats = () => setShowConfirmation(true);
   const confirmClearStats = () => {
     clearStats();
     setShowConfirmation(false);
@@ -42,7 +76,9 @@ function AdminPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-4">
             <h2 className="text-2xl font-bold mb-4">Confirmation</h2>
-            <p className="mb-6">Êtes-vous sûr de vouloir effacer tout l'historique des statistiques ? Cette action est irréversible.</p>
+            <p className="mb-6">
+              Êtes-vous sûr de vouloir effacer tout l'historique des statistiques ? Cette action est irréversible.
+            </p>
             <div className="flex gap-4 justify-end">
               <button
                 onClick={() => setShowConfirmation(false)}
@@ -96,12 +132,21 @@ function AdminPage() {
             <tbody className="divide-y divide-gray-200">
               {stats.daily.map((day) => (
                 <tr key={day.date}>
-                  <td className="px-6 py-4 whitespace-nowrap">{new Date(day.date).toLocaleDateString('fr-FR')}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {new Date(day.date).toLocaleDateString('fr-FR')}
+                  </td>
                   <td className="px-6 py-4">{day.increments}</td>
                   <td className="px-6 py-4">{day.decrements}</td>
                   <td className="px-6 py-4">{day.resets}</td>
                 </tr>
               ))}
+              {stats.daily.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="text-center py-6 text-gray-500">
+                    Aucun historique disponible
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
