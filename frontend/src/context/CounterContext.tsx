@@ -1,13 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// 🔗 URL du backend hébergé (Render)
-const BACKEND_URL = 'https://mo-affichage.onrender.com';
-
-// 🔗 Connexion au backend
-const socket = io(BACKEND_URL, {
-  transports: ['websocket', 'polling'], // compatibilité Render
-});
+// 🔗 Connexion au backend (adapter si ton backend est sur une autre machine)
+const socket = io('http://localhost:4000');
 
 // ✅ Types pour TypeScript
 interface CounterContextType {
@@ -36,17 +31,13 @@ export const CounterProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsBusy(false);
     });
 
-    // ✅ Récupération initiale du compteur depuis le backend
-    fetch(`${BACKEND_URL}/count`)
+    // Récupération initiale (si jamais le socket se connecte après)
+    fetch('http://localhost:4000/count')
       .then((res) => res.json())
-      .then((data) => {
-        if (typeof data.count === 'number') {
-          setCount(data.count);
-        }
-      })
+      .then((data) => setCount(data.count))
       .catch((err) => console.error('Erreur fetch count:', err));
 
-    // Nettoyage du listener à la déconnexion
+    // Nettoyage des listeners
     return () => {
       socket.off('countUpdated');
     };

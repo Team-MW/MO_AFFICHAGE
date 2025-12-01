@@ -31,28 +31,33 @@ function CounterPage() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSetValue();
-    }
+    if (e.key === 'Enter') handleSetValue();
   };
 
   return (
-    <div className="flex flex-col items-center justify-center gap-12 p-8">
-      <div className="text-[12rem] font-bold text-red-900">{count}</div>
+    <div className="flex flex-col items-center justify-center gap-8 sm:gap-10 md:gap-12 p-4 sm:p-6 md:p-8 min-h-screen bg-gray-50">
       
+      {/* --- Affichage du compteur --- */}
+      <div className="text-[6rem] sm:text-[8rem] md:text-[12rem] font-bold text-red-900 text-center leading-none">
+        {count}
+      </div>
+
+      {/* --- Bouton pour ouvrir l’affichage --- */}
       <button
         onClick={openDisplay}
-        className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors mb-4"
+        className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-lg text-sm sm:text-base md:text-lg hover:bg-blue-700 transition-colors shadow-md"
       >
         Ouvrir l'affichage <ExternalLink size={20} />
       </button>
 
-      <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-8 shadow-md">
-        <h3 className="text-xl font-semibold text-red-800 mb-4 flex items-center gap-2">
+      {/* --- Bloc définition manuelle --- */}
+      <div className="w-full max-w-lg bg-red-50 border-2 border-red-200 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 shadow-md">
+        <h3 className="text-lg sm:text-xl font-semibold text-red-800 mb-4 flex items-center gap-2">
           <Hash size={24} />
           Définir le numéro directement
         </h3>
-        <div className="flex gap-4 items-center">
+
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
           <input
             type="number"
             value={inputValue}
@@ -61,62 +66,71 @@ function CounterPage() {
             placeholder="Ex: 55"
             min="0"
             max="2000"
-            className="flex-1 px-6 py-4 text-3xl font-bold text-red-900 border-2 border-red-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-red-400 focus:border-red-500 text-center"
+            className="w-full sm:flex-1 px-4 sm:px-6 py-3 sm:py-4 text-2xl sm:text-3xl font-bold text-red-900 border-2 border-red-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-red-400 focus:border-red-500 text-center"
             disabled={isBusy}
           />
           <button
             onClick={handleSetValue}
             disabled={isBusy || !inputValue}
-            className="bg-red-600 text-white px-8 py-4 rounded-xl text-2xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            className="w-full sm:w-auto bg-red-600 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-xl sm:text-2xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
           >
             Appliquer
           </button>
         </div>
-        <p className="text-sm text-gray-600 mt-3 text-center">Entrez un numéro entre 0 et 2000, puis cliquez sur Appliquer</p>
+
+        <p className="text-xs sm:text-sm text-gray-600 mt-3 text-center">
+          Entrez un numéro entre 0 et 2000, puis cliquez sur Appliquer
+        </p>
       </div>
-      
-      <div className="flex gap-12">
+
+      {/* --- Boutons navigation --- */}
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-10 w-full max-w-2xl justify-center">
         <button
           onClick={decrement}
           disabled={isBusy || count <= 0}
-          className="flex items-center gap-4 bg-red-600 text-white px-16 py-8 rounded-2xl text-4xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          className="flex items-center justify-center gap-3 sm:gap-4 bg-red-600 text-white px-10 sm:px-14 md:px-16 py-6 sm:py-8 rounded-2xl text-2xl sm:text-3xl md:text-4xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg w-full sm:w-auto"
         >
-          <ChevronLeft size={48} />
+          <ChevronLeft size={40} className="sm:size-[48px]" />
           Retour
         </button>
+
         <button
           onClick={increment}
           disabled={isBusy || count >= 2000}
-          className="flex items-center gap-4 bg-red-600 text-white px-16 py-8 rounded-2xl text-4xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          className="flex items-center justify-center gap-3 sm:gap-4 bg-red-600 text-white px-10 sm:px-14 md:px-16 py-6 sm:py-8 rounded-2xl text-2xl sm:text-3xl md:text-4xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg w-full sm:w-auto"
         >
           Suivant
-          <ChevronRight size={48} />
+          <ChevronRight size={40} className="sm:size-[48px]" />
         </button>
       </div>
 
-      <div className="mt-12 text-center">
-        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Pour un affichage optimal:</h2>
-        <ol className="text-left inline-block">
-          <li className="mb-2">1. Cliquez sur "Ouvrir l'affichage"</li>
-          <li className="mb-2">2. Déplacez la nouvelle fenêtre vers l'écran TV</li>
-          <li className="mb-2">3. Appuyez sur F11 pour passer en plein écran</li>
+      {/* --- Instructions --- */}
+      <div className="mt-10 sm:mt-12 text-center px-4">
+        <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-700 mb-3 sm:mb-4">
+          Pour un affichage optimal :
+        </h2>
+        <ol className="text-left inline-block text-sm sm:text-base md:text-lg leading-relaxed">
+          <li className="mb-1 sm:mb-2">1. Cliquez sur "Ouvrir l'affichage"</li>
+          <li className="mb-1 sm:mb-2">2. Déplacez la fenêtre vers l'écran TV</li>
+          <li>3. Appuyez sur F11 pour passer en plein écran</li>
         </ol>
       </div>
 
-      <div className="flex items-center gap-4 mt-8">
+      {/* --- Annuler / Réinitialiser --- */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6 mt-8 w-full max-w-md">
         <button
           onClick={undoLastIncrement}
           disabled={isBusy || count <= 0}
-          className="flex items-center gap-2 bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-500 text-white px-5 sm:px-6 py-3 sm:py-4 rounded-lg text-sm sm:text-base hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Annuler le dernier +
         </button>
         <button
           onClick={reset}
-          className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-600 text-white px-5 sm:px-6 py-3 sm:py-4 rounded-lg text-sm sm:text-base hover:bg-gray-700 transition-colors"
         >
           Réinitialiser
-          <RotateCcw size={24} />
+          <RotateCcw size={20} />
         </button>
       </div>
     </div>
