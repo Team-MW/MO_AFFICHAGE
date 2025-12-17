@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { BACKEND_URL } from '../config';
 
 // 🔗 URL du backend hébergé (Render)
-const BACKEND_URL = 'https://mo-affichage.onrender.com';
 
 // 🔗 Connexion au backend
 const socket = io(BACKEND_URL, {

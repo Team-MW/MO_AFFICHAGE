@@ -14,6 +14,11 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+// 🔎 Healthcheck (keep-alive)
+app.get('/health', (_req, res) => {
+  res.status(200).send('ok');
+});
+
 // 🧮 Variable compteur
 let count = 0;
 

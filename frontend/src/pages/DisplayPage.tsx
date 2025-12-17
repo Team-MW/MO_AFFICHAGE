@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useCounter } from '../context/CounterContext';
 import { Timer } from 'lucide-react';
+import { BACKEND_URL } from '../config';
 
 function DisplayPage() {
   const { count } = useCounter();
@@ -17,6 +18,19 @@ function DisplayPage() {
         );
     }
   }, [count]);
+
+  // ♻️ Keep-alive: ping backend toutes les 10 minutes pour éviter l'endormissement
+  useEffect(() => {
+    const doPing = () => {
+      fetch(`${BACKEND_URL}/health`, { method: 'GET', cache: 'no-store' })
+        .then(() => {})
+        .catch(() => {});
+    };
+    // Premier ping dès le montage
+    doPing();
+    const intervalId = setInterval(doPing, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(intervalId);
+  }, []);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-red-50 p-2 sm:p-4 md:p-6 lg:p-8">
